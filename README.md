@@ -91,7 +91,7 @@ nfl-betting-model/
 ├── data/
 │   ├── nfl_betting.db          # SQLite database
 │   └── raw/
-|       └── spreadspoke_scores.csv  # Vegas lines (not included)
+|       └── spreadspoke_scores.csv  # Vegas lines (not included), renamed in code to nfl_betting_kaggle.csv
 ├── src/
 │   ├── data_loader.py          # Load NFL game data
 │   ├── elo_model.py            # Core Elo rating system
