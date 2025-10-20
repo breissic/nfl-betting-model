@@ -139,3 +139,78 @@ class EloModel:
         conn.close()
 
         print(f"DEBUG: Saved {len(ratings_df)} rating records")
+
+    def predict_game(self, home_team, away_team):
+        """
+        predict game outcome (win_probability, predicted_spread)
+        based off elo only
+        """
+
+        diff = self.get_rating_diff(home_team, away_team)
+
+        xWinProb = self.calculate_expected_score(diff)
+
+        predicted_spread = diff / 25 # 25 ELO = 1 point in the spread
+
+        return (xWinProb, predicted_spread)
+
+    def backtest(self, db_path, seasons):
+        """
+        run backtest to evaluate predictions
+
+        returns a dataframe with predicted vs actual outcomes
+        """
+         # open database connection
+        conn = sqlite3.connect(db_path)
+
+        # initialize teams (team_ids from teams table) which tracks their current and historical elos
+        teams_df = pd.read_sql('SELECT team_id FROM teams', conn)
+        team_ids = teams_df['team_id'].tolist()
+
+        first_game = pd.read_sql("""
+                                 SELECT MIN(date) as start_date FROM games WHERE season IN ({})
+                                 """.format(','.join(map(str, seasons))), conn)
+        start_date = first_game.iloc[0]['start_date']
+
+        self.initialize_teams(team_ids, seasons[0], start_date)
+
+        games_df = pd.read_sql("""
+            SELECT * FROM games
+            WHERE season IN ({}) 
+            AND home_score IS NOT NULL  
+            ORDER BY date, game_id
+        """.format(','.join(map(str, seasons))), conn)
+
+        predictions = []
+        
+        for i, (_, game) in enumerate(games_df.iterrows()):
+            win_prob, pred_spread = self.predict_game(
+                game['home_team_id'],
+                game['away_team_id']
+            )
+
+            predictions.append({
+                'game_id': game['game_id'],
+                'date': game['date'],
+                'season': game['season'],
+                'week': game['week'],
+                'home_team': game['home_team_id'],
+                'away_team': game['away_team_id'],
+                'home_elo_before': self.ratings[game['home_team_id']],
+                'away_elo_before': self.ratings[game['away_team_id']],
+                'predicted_home_win_prob': win_prob,
+                'predicted_spread': pred_spread,
+                'actual_home_score': game['home_score'],
+                'actual_away_score': game['away_score'],
+                'actual_spread': game['home_score'] - game['away_score'],
+                'home_won': game['home_score'] > game['away_score'],
+                'predicted_correctly': (win_prob > 0.5 and game['home_score'] > game['away_score']) or 
+                                    (win_prob < 0.5 and game['home_score'] < game['away_score'])
+            })
+            
+            self.update_ratings_after_game(game['home_team_id'], game['away_team_id'],
+                                           game['home_score'], game['away_score'],
+                                           game['date'], game['season'], game['week'])
+            
+        conn.close()
+        return pd.DataFrame(predictions)
