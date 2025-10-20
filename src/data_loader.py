@@ -15,6 +15,79 @@ class NFLDataLoader:
         self.conn = sqlite3.connect(db_path)
         print(f"DEBUG: Database connected: {db_path}")
 
+    def initialize_schema(self):
+        # Create database tables with proper schema
+        print("Initializing database schema...")
+        
+        # Drop existing tables if they exist
+        self.conn.execute("DROP TABLE IF EXISTS predictions")
+        self.conn.execute("DROP TABLE IF EXISTS elo_ratings")
+        self.conn.execute("DROP TABLE IF EXISTS games")
+        self.conn.execute("DROP TABLE IF EXISTS teams")
+        
+        # Create tables with proper constraints
+        self.conn.execute("""
+            CREATE TABLE teams(
+                team_id TEXT PRIMARY KEY,
+                team_name TEXT NOT NULL,
+                conference TEXT,
+                division TEXT
+            )
+        """)
+        
+        self.conn.execute("""
+            CREATE TABLE games(
+                game_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                season INTEGER NOT NULL,
+                week INTEGER NOT NULL,
+                date TEXT NOT NULL,
+                home_team_id TEXT NOT NULL,
+                away_team_id TEXT NOT NULL,
+                home_score INTEGER,
+                away_score INTEGER,
+                vegas_spread_open REAL,
+                vegas_spread_close REAL,
+                vegas_total REAL,
+                FOREIGN KEY(home_team_id) REFERENCES teams(team_id),
+                FOREIGN KEY(away_team_id) REFERENCES teams(team_id)
+            )
+        """)
+        
+        self.conn.execute("""
+            CREATE TABLE elo_ratings(
+                team_id TEXT NOT NULL,
+                date TEXT NOT NULL,
+                elo_rating REAL NOT NULL,
+                season INTEGER NOT NULL,
+                week INTEGER NOT NULL,
+                PRIMARY KEY(team_id, season, week),
+                FOREIGN KEY(team_id) REFERENCES teams(team_id)
+            )
+        """)
+        
+        self.conn.execute("""
+            CREATE TABLE predictions(
+                prediction_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                game_id INTEGER NOT NULL,
+                model_version TEXT NOT NULL,
+                predicted_spread REAL,
+                predicted_total REAL,
+                confidence REAL,
+                timestamp INTEGER NOT NULL,
+                FOREIGN KEY(game_id) REFERENCES games(game_id),
+                UNIQUE(game_id, model_version)
+            )
+        """)
+        
+        # Create indexes
+        self.conn.execute("CREATE INDEX idx_games_date ON games(date)")
+        self.conn.execute("CREATE INDEX idx_games_season_week ON games(season, week)")
+        self.conn.execute("CREATE INDEX idx_games_teams ON games(home_team_id, away_team_id)")
+        self.conn.execute("CREATE INDEX idx_elo_team_date ON elo_ratings(team_id, date)")
+        
+        self.conn.commit()
+        print("✓ Schema initialized")
+
     def load_teams(self):
         # Load NFL teams into teams table
 
@@ -31,7 +104,7 @@ class NFLDataLoader:
             })
 
             teams_df = teams_df.drop_duplicates(subset=['team_id'])
-            teams_df.to_sql('teams', self.conn, if_exists='replace', index=False)
+            teams_df.to_sql('teams', self.conn, if_exists='append', index=False)
 
             print(f'DEBUG: Loaded {len(teams_df)} teams succesfully')
             return teams_df
@@ -66,7 +139,7 @@ class NFLDataLoader:
 
             games_df = games_df.sort_values(['date', 'season', 'week']).reset_index(drop=True)
 
-            games_df.to_sql('games', self.conn, if_exists='replace', index=False)
+            games_df.to_sql('games', self.conn, if_exists='append', index=False)
 
             completed_games = games_df['home_score'].notna().sum()
             upcoming_games = games_df['home_score'].isna().sum()
@@ -199,6 +272,8 @@ def main():
     loader = NFLDataLoader('data/nfl_betting.db')
     
     try:
+        loader.initialize_schema()
+
         # Load teams
         loader.load_teams()
         
