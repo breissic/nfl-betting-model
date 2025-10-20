@@ -196,8 +196,14 @@ class EloModel:
         """.format(','.join(map(str, seasons))), conn)
 
         predictions = []
-        
+        current_season = None
+
         for i, (_, game) in enumerate(games_df.iterrows()):
+            if current_season is not None and game['season'] != current_season:
+                self.apply_season_reversion()
+
+            current_season = game['season']
+            
             win_prob, pred_spread = self.predict_game(
                 game['home_team_id'],
                 game['away_team_id']
@@ -228,3 +234,15 @@ class EloModel:
             
         conn.close()
         return pd.DataFrame(predictions)
+    
+    def apply_season_reversion(self, reversion_factor=1.0):
+        """
+        new_rating = 1500 + (old_rating - 1500) * reversion_factor
+        """
+        mean_rating = 1500
+
+        for team in self.ratings:
+            deviation = self.ratings[team] - mean_rating
+            self.ratings[team] = mean_rating + (deviation * reversion_factor)
+
+        print(f"DEBUG: Season reversion applied with factor {reversion_factor}")
