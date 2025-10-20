@@ -50,17 +50,31 @@ class EloModel:
         
         new rating = old_rating + k(actual-expected)
         """
+        home_elo_before = self.ratings[home_team]
+        away_elo_before = self.ratings[away_team]
+        
         diff = self.get_rating_diff(home_team, away_team)
-        xScore = self.calculate_expected_score(diff)
+        expected = self.calculate_expected_score(diff)
 
         if home_score > away_score:
             actual = 1
+            winner_elo = home_elo_before
+            loser_elo = away_elo_before
         elif home_score < away_score:
             actual = 0
+            winner_elo = away_elo_before
+            loser_elo = home_elo_before
         else:
             actual = 0.5
+            winner_elo = home_elo_before
+            loser_elo = away_elo_before
 
-        change = self.k_factor * (actual - xScore)
+        score_diff = abs(home_score - away_score)
+        elo_diff = winner_elo - loser_elo
+        mov_multiplier = np.log(score_diff + 1) * (2.2 / ((elo_diff * 0.001) + 2.2))
+        effective_k = self.k_factor * mov_multiplier
+
+        change = effective_k * (actual - expected)
         old_rating_home = self.ratings[home_team]
         new_rating_home = old_rating_home + change
         old_rating_away = self.ratings[away_team]
