@@ -86,7 +86,7 @@ class NFLDataLoader:
         self.conn.execute("CREATE INDEX idx_elo_team_date ON elo_ratings(team_id, date)")
         
         self.conn.commit()
-        print("✓ Schema initialized")
+        print("Schema initialized")
 
     def load_teams(self):
         # Load NFL teams into teams table
